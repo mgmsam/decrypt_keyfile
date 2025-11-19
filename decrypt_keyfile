@@ -1,0 +1,77 @@
+#!/bin/sh
+
+CRYPTSETUP_DIR="/run/cryptsetup"
+CRYPTTAB_TIMEOUT=30
+
+cryptsetup_message () {
+    local IFS=' '
+    if test -x /bin/plymouth && plymouth --ping
+    then
+        plymouth message --text="cryptsetup: $*"
+    elif test ${#*} -lt 70
+    then
+        echo "cryptsetup: $*" >&2
+    else
+        # use busybox's fold(1) and sed(1) at initramfs stage
+        echo "cryptsetup: $*" | fold -s | sed '1! s/^/    /' >&2
+    fi
+    return 0
+}
+
+shutdown_system () {
+    sleep 5
+    cryptsetup_message "ERROR: $CRYPTTAB_NAME: The system is shutting down"
+    sleep 5
+    poweroff -f
+}
+
+test "$CRYPTTAB_OPTION_tries" -le 0 || {
+    CRYPTSETUP_TRIED="$CRYPTSETUP_DIR/cryptsetup-$CRYPTTAB_NAME.tried"
+    test -d "$CRYPTSETUP_DIR" || mkdir -p "$CRYPTSETUP_DIR"
+    if test -f "$CRYPTSETUP_TRIED"
+    then
+        . "$CRYPTSETUP_TRIED"
+    fi
+    TRIED=$((TRIED + 1))
+    echo "TRIED=$TRIED" > "$CRYPTSETUP_TRIED"
+    echo >&2
+
+    test "$TRIED" -le "$CRYPTTAB_OPTION_tries" ||
+        shutdown_system
+}
+
+test "${1:-}" = none || test "${1:-}" = - || {
+    USB_KEY="${1#*:}"
+    USB_UUID="${1%%:*}"
+    USB_UUID="${USB_UUID#*=}"
+    USB_MOUNT="$CRYPTSETUP_DIR/usb"
+    sleep 3
+    test -b "/dev/disk/by-uuid/$USB_UUID" && {
+        test  -d "$USB_MOUNT" ||
+        mkdir -p "$USB_MOUNT" &&
+        mount "/dev/disk/by-uuid/$USB_UUID" "$USB_MOUNT" && {
+            test -f "$USB_MOUNT/$USB_KEY" &&
+            cat     "$USB_MOUNT/$USB_KEY" && {
+                umount "$USB_MOUNT" || :
+                exit
+            }
+        } || umount "$USB_MOUNT"
+    } 2>/dev/null || :
+}
+
+run_askpass () {
+    case "${CRYPTTAB_TIMEOUT:-0}" in
+        0|*[!0-9]*)
+            /lib/cryptsetup/askpass "Please unlock disk $CRYPTTAB_NAME: "
+            ;;
+        *)
+            timeout -s KILL "$CRYPTTAB_TIMEOUT" \
+            /lib/cryptsetup/askpass "Please unlock disk $CRYPTTAB_NAME: " || {
+                cryptsetup_message "ERROR: $CRYPTTAB_NAME: Password timeout expired"
+                shutdown_system
+            }
+    esac
+}
+
+# Please comment out this line if you don't want to ask for a password
+run_askpass
