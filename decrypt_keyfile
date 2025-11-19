@@ -3,7 +3,7 @@
 #
 # Copyright (c) 2025 Semyon A Mironov
 #
-# Authors: Semyon A Mironov <s.mironov@mgmsam.pro> 
+# Authors: Semyon A Mironov <s.mironov@mgmsam.pro>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -19,7 +19,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 CRYPTSETUP_DIR="/run/cryptsetup"
-CRYPTTAB_TIMEOUT=30
+CRYPTSETUP_TIMEOUT=30
 
 cryptsetup_message () {
     local IFS=' '
@@ -78,12 +78,12 @@ test "${1:-}" = none || test "${1:-}" = - || {
 }
 
 run_askpass () {
-    case "${CRYPTTAB_TIMEOUT:-0}" in
+    case "${CRYPTSETUP_TIMEOUT:-0}" in
         0|*[!0-9]*)
             /lib/cryptsetup/askpass "Please unlock disk $CRYPTTAB_NAME: "
             ;;
         *)
-            timeout -s KILL "$CRYPTTAB_TIMEOUT" \
+            timeout -s KILL "$CRYPTSETUP_TIMEOUT" \
             /lib/cryptsetup/askpass "Please unlock disk $CRYPTTAB_NAME: " || {
                 cryptsetup_message "ERROR: $CRYPTTAB_NAME: Password timeout expired"
                 shutdown_system
