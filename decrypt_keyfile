@@ -60,21 +60,50 @@ test "$CRYPTTAB_OPTION_tries" -le 0 || {
 is_timeout () {
     case "${1:-}" in
         0)
+            TIMEOUT=
             ;;
         *[0-9][smhd] )
             case "${1%?}" in
                 *[!0-9]*)
-                    false
+                    return 1
                     ;;
             esac
             ;;
         *[!0-9]*)
-            false
+            return 1
             ;;
-    esac || {
-        cryptsetup_message "ERROR: $CRYPTTAB_NAME: Couldn't resolve timeout '$1'"
-        return 1
-    }
+    esac
+}
+
+convert_timeout_to_second () {
+    case "$2" in
+        s) TIMEOUT="$1" ;;
+        m) TIMEOUT="$(($1 * 60))" ;;
+        h) TIMEOUT="$(($1 * 60 * 60))" ;;
+        d) TIMEOUT="$(($1 * 24 * 60 * 60))" ;;
+    esac
+}
+
+resolve_timeout () {
+    case "${1:-}" in
+        0)
+            TIMEOUT=
+            ;;
+        *[0-9][smhd])
+            case "${1%?}" in
+                *[!0-9]*)
+                    return 1
+                    ;;
+            esac
+            convert_timeout_to_second "${1%?}" "${1#"${1%?}"}"
+            ;;
+        *[!0-9]*)
+            return 1
+            ;;
+        *)
+            TIMEOUT="$1"
+            ;;
+    esac
 }
 
 # resolve_device(DEV)
@@ -82,115 +111,96 @@ is_timeout () {
 #   $1=name
 #   Resolved name is echoed.
 resolve_device () {
-    case "$DEV" in
-        UUID=* | LABEL=* | PARTUUID=* | PARTLABEL=*)
-            DEV="$(blkid --list-one --match-token "$DEV" --output device)" || DEV=
-        ;;
-    esac
-    test -b "${DEV:-}" || return 1
+    SEC=0
+    SPEC="$DEV"
+    while test "$SEC" -le "${TIMEOUT:-5}"
+    do
+        SEC="$((SEC + 1))"
+        case "$SPEC" in
+            UUID=* | LABEL=* | PARTUUID=* | PARTLABEL=*)
+                if DEV="$(blkid --list-one --match-token "$SPEC" --output device)"
+                then
+                    return
+                fi ;;
+            *)
+                if test -e "$SPEC"
+                then
+                    return
+                fi ;;
+        esac
+        sleep 1
+    done 2>/dev/null
+    DEV="$SPEC"
+    return 1
+}
+
+mount_dev () {
+    DEV_MOUNT="$CRYPTSETUP_DIR/${CRYPTTAB_NAME}_decryptor"
+    test -d "$DEV_MOUNT" || {
+        test ! -e "$DEV_MOUNT" && mkdir -p "$DEV_MOUNT" 2>/dev/null
+    } && mount "$DEV" "$DEV_MOUNT" 2>/dev/null || {
+        cryptsetup_message "ERROR: $CRYPTTAB_NAME: Can't attach decryptor in '$DEV_MOUNT'"
+        sleep 5
+        return 1
+    }
 }
 
 read_key () {
-    test -e "$1" || {
-        cryptsetup_message "ERROR: $CRYPTTAB_NAME: Key not found: '$1'"
-        return 1
-    }
-
     test -z "${CRYPTTAB_OPTION_keyfile_size:-}" ||
         OPTIONS="bs=$CRYPTTAB_OPTION_keyfile_size count=1"
 
     test -z "${CRYPTTAB_OPTION_keyfile_offset:-}" ||
         OPTIONS="${OPTIONS:-} skip=$CRYPTTAB_OPTION_keyfile_offset"
 
-    dd if="$1" ${OPTIONS:-} status=none 2>/dev/null ||
-        cryptsetup_message "ERROR: $CRYPTTAB_NAME: Can't read key '$1'"
+    dd if="$1" ${OPTIONS:-} status=none 2>/dev/null || {
+        cryptsetup_message "ERROR: $CRYPTTAB_NAME: Can't read '$1'"
+        return 1
+    }
 }
 
 get_key () {
-    # $1 - DEV:KEY:TIMEOUT
-    # $1 - DEV:TIMEOUT
-    # $1 - DEV:KEY
-    # $1 - DEV
-    # $1 - KEY:TIMEOUT
-    # $1 - TIMEOUT
-    # $1 - KEY
-
     IFS=: read DEV KEY TIMEOUT <<EOF
 $1
 EOF
-    printf '%s\n' "dev[$DEV]" "key[$KEY]" "timout[$TIMEOUT]" >&2
-
-    if resolve_device
+    if test "${TIMEOUT:-}"
     then
-        if test "${TIMEOUT:-}"
-        then
-            is_timeout "$TIMEOUT" || return
-        else
-            if test "${KEY:-}"
-            then
-                if is_timeout "$KEY"
-                then
-                    TIMEOUT="$KEY"
-                    KEY=
-                fi
-            fi
-        fi
-        # result: DEV:KEY:TIMEOUT or DEV:TIMEOUT or DEV:KEY or DEV
-    else
-        test "${DEV:-}" || {
-            cryptsetup_message "ERROR: $CRYPTTAB_NAME: Couldn't resolve device '$DEV'"
-            return
+        resolve_timeout "$TIMEOUT" || {
+            cryptsetup_message "ERROR: $CRYPTTAB_NAME: Couldn't resolve timeout '$TIMEOUT'"
+            TIMEOUT=
         }
-        if test "${TIMEOUT:-}"
+    elif test "${KEY:-}"
+    then
+        if resolve_timeout "$KEY"
         then
-            cryptsetup_message "ERROR: $CRYPTTAB_NAME: Couldn't resolve device '$DEV'"
+            KEY=
+        fi
+    else
+        if resolve_timeout "$DEV"
+        then
             return
         fi
-        if test "${KEY:-}"
-        then
-            is_timeout "$KEY" || return
-            TIMEOUT="$KEY"
-            KEY="$DEV"
-            DEV=
-        else
-            if is_timeout "$DEV"
-            then
-                TIMEOUT="$DEV"
-                DEV=
-                # result: TIMEOUT
-                return
-            else
-                KEY="$DEV"
-                DEV=
-            fi
-        fi
-        # result: KEY:TIMEOUT or KEY
     fi
 
-    printf '%s\n' "dev[$DEV]" "key[$KEY]" "timout[$TIMEOUT]" >&2
+    resolve_device "$DEV" || {
+        cryptsetup_message "ERROR: $CRYPTTAB_NAME: Couldn't resolve '$DEV'"
+        return
+    }
 
-    if test "${DEV:+"${KEY}"}"
+    if test "${KEY:-}"
     then
-        # result: DEV:KEY:TIMEOUT or DEV:KEY
-        DEV_MOUNT="$CRYPTSETUP_DIR/${CRYPTTAB_NAME}_decryptor"
-
-        test -d "$DEV_MOUNT" || {
-            test ! -e "$DEV_MOUNT" && mkdir -p "$DEV_MOUNT" 2>/dev/null
-        } && mount "$DEV" "$DEV_MOUNT" 2>/dev/null || {
-            cryptsetup_message "ERROR: $CRYPTTAB_NAME: Can't attach decryptor in '$DEV_MOUNT'"
-            sleep 5
+        test -b "$DEV" || {
+            cryptsetup_message "ERROR: $CRYPTTAB_NAME: is not a block device: '$DEV'"
             return
         }
-
-        read_key "$DEV_MOUNT/$KEY" && {
+        mount_dev && read_key "$DEV_MOUNT/$KEY" && {
             umount "$DEV_MOUNT" 2>/dev/null || :
             exit
-        } || {
-            umount "$DEV_MOUNT" 2>/dev/null
-        }
+        } || umount "$DEV_MOUNT" 2>/dev/null
+    elif test -d "$DEV"
+    then
+        cryptsetup_message "ERROR: $CRYPTTAB_NAME: is directory: '$DEV'"
     else
-        # result: DEV:TIMEOUT or DEV or KEY:TIMEOUT or KEY
-        read_key "${DEV:-"$KEY"}"
+        read_key "$DEV" && exit
     fi
 }
 
@@ -212,7 +222,6 @@ case "${1:-}" in
     "" | none | -)
         ;;
     *)
-        sleep 3
         get_key "$1" || :
         ;;
 esac
