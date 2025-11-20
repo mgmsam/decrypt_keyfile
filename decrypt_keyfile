@@ -19,7 +19,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 CRYPTSETUP_DIR="/run/cryptsetup"
-CRYPTSETUP_TIMEOUT=30
 
 cryptsetup_message () {
     local IFS=' '
@@ -43,6 +42,54 @@ shutdown_system () {
     poweroff -f
 }
 
+test "$CRYPTTAB_OPTION_tries" -le 0 || {
+    CRYPTSETUP_TRIED="$CRYPTSETUP_DIR/cryptsetup-$CRYPTTAB_NAME.tried"
+    test -d "$CRYPTSETUP_DIR" || mkdir -p "$CRYPTSETUP_DIR"
+    if test -f "$CRYPTSETUP_TRIED"
+    then
+        . "$CRYPTSETUP_TRIED"
+    fi
+    TRIED=$((TRIED + 1))
+    echo "TRIED=$TRIED" > "$CRYPTSETUP_TRIED"
+    echo >&2
+
+    test "$TRIED" -le "$CRYPTTAB_OPTION_tries" ||
+        shutdown_system
+}
+
+is_timeout () {
+    case "${1:-}" in
+        0)
+            ;;
+        *[0-9][smhd] )
+            case "${1%?}" in
+                *[!0-9]*)
+                    false
+                    ;;
+            esac
+            ;;
+        *[!0-9]*)
+            false
+            ;;
+    esac || {
+        cryptsetup_message "ERROR: $CRYPTTAB_NAME: Couldn't resolve timeout '$1'"
+        return 1
+    }
+}
+
+# resolve_device(DEV)
+#   Resolve device node from a name. This expands any LABEL or UUID.
+#   $1=name
+#   Resolved name is echoed.
+resolve_device () {
+    case "$DEV" in
+        UUID=* | LABEL=* | PARTUUID=* | PARTLABEL=*)
+            DEV="$(blkid --list-one --match-token "$DEV" --output device)" || DEV=
+        ;;
+    esac
+    test -b "${DEV:-}" || return 1
+}
+
 read_key () {
     test -e "$1" || {
         cryptsetup_message "ERROR: $CRYPTTAB_NAME: Key not found: '$1'"
@@ -59,52 +106,116 @@ read_key () {
         cryptsetup_message "ERROR: $CRYPTTAB_NAME: Can't read key '$1'"
 }
 
-test "$CRYPTTAB_OPTION_tries" -le 0 || {
-    CRYPTSETUP_TRIED="$CRYPTSETUP_DIR/cryptsetup-$CRYPTTAB_NAME.tried"
-    test -d "$CRYPTSETUP_DIR" || mkdir -p "$CRYPTSETUP_DIR"
-    if test -f "$CRYPTSETUP_TRIED"
+get_key () {
+    # $1 - DEV:KEY:TIMEOUT
+    # $1 - DEV:TIMEOUT
+    # $1 - DEV:KEY
+    # $1 - DEV
+    # $1 - KEY:TIMEOUT
+    # $1 - TIMEOUT
+    # $1 - KEY
+
+    IFS=: read DEV KEY TIMEOUT <<EOF
+$1
+EOF
+    printf '%s\n' "dev[$DEV]" "key[$KEY]" "timout[$TIMEOUT]" >&2
+
+    if resolve_device
     then
-        . "$CRYPTSETUP_TRIED"
+        if test "${TIMEOUT:-}"
+        then
+            is_timeout "$TIMEOUT" || return
+        else
+            if test "${KEY:-}"
+            then
+                if is_timeout "$KEY"
+                then
+                    TIMEOUT="$KEY"
+                    KEY=
+                fi
+            fi
+        fi
+        # result: DEV:KEY:TIMEOUT or DEV:TIMEOUT or DEV:KEY or DEV
+    else
+        test "${DEV:-}" || {
+            cryptsetup_message "ERROR: $CRYPTTAB_NAME: Couldn't resolve device '$DEV'"
+            return
+        }
+        if test "${TIMEOUT:-}"
+        then
+            cryptsetup_message "ERROR: $CRYPTTAB_NAME: Couldn't resolve device '$DEV'"
+            return
+        fi
+        if test "${KEY:-}"
+        then
+            is_timeout "$KEY" || return
+            TIMEOUT="$KEY"
+            KEY="$DEV"
+            DEV=
+        else
+            if is_timeout "$DEV"
+            then
+                TIMEOUT="$DEV"
+                DEV=
+                # result: TIMEOUT
+                return
+            else
+                KEY="$DEV"
+                DEV=
+            fi
+        fi
+        # result: KEY:TIMEOUT or KEY
     fi
-    TRIED=$((TRIED + 1))
-    echo "TRIED=$TRIED" > "$CRYPTSETUP_TRIED"
-    echo >&2
 
-    test "$TRIED" -le "$CRYPTTAB_OPTION_tries" ||
-        shutdown_system
-}
+    printf '%s\n' "dev[$DEV]" "key[$KEY]" "timout[$TIMEOUT]" >&2
 
-test "${1:-}" = none || test "${1:-}" = - || {
-    KEY_FILE="${1#*:}"
-    USB_UUID="${1%%:*}"
-    USB_UUID="${USB_UUID#*=}"
-    USB_MOUNT="$CRYPTSETUP_DIR/usb"
-    sleep 3
-    test -b "/dev/disk/by-uuid/$USB_UUID" && {
-        test  -d "$USB_MOUNT" ||
-        mkdir -p "$USB_MOUNT" &&
-        mount "/dev/disk/by-uuid/$USB_UUID" "$USB_MOUNT" && {
-            read_key "$USB_MOUNT/$KEY_FILE" && {
-                umount "$USB_MOUNT" || :
-                exit
-            }
-        } || umount "$USB_MOUNT"
-    } 2>/dev/null || :
+    if test "${DEV:+"${KEY}"}"
+    then
+        # result: DEV:KEY:TIMEOUT or DEV:KEY
+        DEV_MOUNT="$CRYPTSETUP_DIR/${CRYPTTAB_NAME}_decryptor"
+
+        test -d "$DEV_MOUNT" || {
+            test ! -e "$DEV_MOUNT" && mkdir -p "$DEV_MOUNT" 2>/dev/null
+        } && mount "$DEV" "$DEV_MOUNT" 2>/dev/null || {
+            cryptsetup_message "ERROR: $CRYPTTAB_NAME: Can't attach decryptor in '$DEV_MOUNT'"
+            sleep 5
+            return
+        }
+
+        read_key "$DEV_MOUNT/$KEY" && {
+            umount "$DEV_MOUNT" 2>/dev/null || :
+            exit
+        } || {
+            umount "$DEV_MOUNT" 2>/dev/null
+        }
+    else
+        # result: DEV:TIMEOUT or DEV or KEY:TIMEOUT or KEY
+        read_key "${DEV:-"$KEY"}"
+    fi
 }
 
 run_askpass () {
-    case "${CRYPTSETUP_TIMEOUT:-0}" in
-        0|*[!0-9]*)
+    case "${TIMEOUT:-}" in
+        "")
             /lib/cryptsetup/askpass "Please unlock disk $CRYPTTAB_NAME: "
             ;;
         *)
-            timeout -s KILL "$CRYPTSETUP_TIMEOUT" \
+            timeout -s KILL "$TIMEOUT" \
             /lib/cryptsetup/askpass "Please unlock disk $CRYPTTAB_NAME: " || {
                 cryptsetup_message "ERROR: $CRYPTTAB_NAME: Password timeout expired"
                 shutdown_system
             }
     esac
 }
+
+case "${1:-}" in
+    "" | none | -)
+        ;;
+    *)
+        sleep 3
+        get_key "$1" || :
+        ;;
+esac
 
 # Please comment out this line if you don't want to ask for a password
 run_askpass
