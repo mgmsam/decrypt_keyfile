@@ -43,6 +43,22 @@ shutdown_system () {
     poweroff -f
 }
 
+read_key () {
+    test -e "$1" || {
+        cryptsetup_message "ERROR: $CRYPTTAB_NAME: Key not found: '$1'"
+        return 1
+    }
+
+    test -z "${CRYPTTAB_OPTION_keyfile_size:-}" ||
+        OPTIONS="bs=$CRYPTTAB_OPTION_keyfile_size count=1"
+
+    test -z "${CRYPTTAB_OPTION_keyfile_offset:-}" ||
+        OPTIONS="${OPTIONS:-} skip=$CRYPTTAB_OPTION_keyfile_offset"
+
+    dd if="$1" ${OPTIONS:-} status=none 2>/dev/null ||
+        cryptsetup_message "ERROR: $CRYPTTAB_NAME: Can't read key '$1'"
+}
+
 test "$CRYPTTAB_OPTION_tries" -le 0 || {
     CRYPTSETUP_TRIED="$CRYPTSETUP_DIR/cryptsetup-$CRYPTTAB_NAME.tried"
     test -d "$CRYPTSETUP_DIR" || mkdir -p "$CRYPTSETUP_DIR"
@@ -68,8 +84,7 @@ test "${1:-}" = none || test "${1:-}" = - || {
         test  -d "$USB_MOUNT" ||
         mkdir -p "$USB_MOUNT" &&
         mount "/dev/disk/by-uuid/$USB_UUID" "$USB_MOUNT" && {
-            test -f "$USB_MOUNT/$KEY_FILE" &&
-            cat     "$USB_MOUNT/$KEY_FILE" && {
+            read_key "$USB_MOUNT/$KEY_FILE" && {
                 umount "$USB_MOUNT" || :
                 exit
             }
