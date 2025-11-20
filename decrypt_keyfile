@@ -181,10 +181,7 @@ EOF
         fi
     fi
 
-    resolve_device "$DEV" || {
-        cryptsetup_message "ERROR: $CRYPTTAB_NAME: Couldn't resolve '$DEV'"
-        return
-    }
+    resolve_device "$DEV" || return
 
     if test "${KEY:-}"
     then
