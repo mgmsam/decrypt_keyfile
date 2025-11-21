@@ -19,6 +19,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 CRYPTSETUP_DIR="/run/cryptsetup"
+TIMEOUT=
 
 cryptsetup_message () {
     local IFS=' '
@@ -86,7 +87,7 @@ convert_timeout_to_second () {
 
 resolve_timeout () {
     case "${1:-}" in
-        0)
+        [0-] | none | infinity)
             TIMEOUT=
             ;;
         *[0-9][smhd])
@@ -113,7 +114,7 @@ resolve_timeout () {
 resolve_device () {
     SEC=0
     SPEC="$DEV"
-    while test "$SEC" -le "${TIMEOUT:-5}"
+    while test "$SEC" -le "${TIMEOUT:-"$SEC"}"
     do
         SEC="$((SEC + 1))"
         case "$SPEC" in
@@ -174,11 +175,9 @@ EOF
         then
             KEY=
         fi
-    else
-        if resolve_timeout "$DEV"
-        then
-            return
-        fi
+    elif resolve_timeout "$DEV"
+    then
+        return
     fi
 
     resolve_device "$DEV" || return
@@ -215,13 +214,5 @@ run_askpass () {
     esac
 }
 
-case "${1:-}" in
-    "" | none | -)
-        ;;
-    *)
-        get_key "$1" || :
-        ;;
-esac
-
-# Please comment out this line if you don't want to ask for a password
+get_key "${1:-none}" || :
 run_askpass
