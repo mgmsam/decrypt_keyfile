@@ -9,7 +9,7 @@ Getting a key from a file for an encrypted volume.
 Assume the following:
 
 - Your encrypted volume is `/dev/sda2`;
-- The encrypted volume is mounted under the name `crypted` in `/dev/mapper/crypted`;
+- The encrypted volume is mounted under the name `lvmlmde` in `/dev/mapper/lvmlmde`;
 - Your USB flash drive for storing the key `key.lek` is `/dev/sdc1`;
 
 1. Clone the script:
@@ -65,7 +65,7 @@ Assume the following:
    ```bash
    cat <<CRYPTTAB > /etc/crypttab
    # <target name> <source device>                           <key file>              <options>
-   crypted         UUID=$LUKS_UUID UUID=$USB_UUID:/key.lek luks,keyscript=decrypt_keyfile
+   lvmlmde         UUID=$LUKS_UUID UUID=$USB_UUID:/key.lek luks,keyscript=decrypt_keyfile
    CRYPTTAB
    ```
 
@@ -177,39 +177,51 @@ You don't necessarily have to specify all fields; only the necessary ones are su
 
   ```
   # <target name> <source device>                           <key file> <options>
-  crypted         UUID=417e53ec-1961-445f-83b7-3ca04ddbf36f 30         luks,tries=1,keyscript=decrypt_keyfile
+  lvmlmde         UUID=417e53ec-1961-445f-83b7-3ca04ddbf36f 30         luks,tries=1,keyscript=decrypt_keyfile
   ```
+
+  ![decrypt_keyfile set timeout](img/decrypt_keyfile_timeout.png)
+
+  ![decrypt_keyfile timeout](img/decrypt_keyfile_timeout.apng)
 
   If the password is not entered within 30 seconds, or if the password is incorrect, the system will shut down.
 
   ```
   # <target name> <source device>                           <key file> <options>
-  crypted         UUID=417e53ec-1961-445f-83b7-3ca04ddbf36f none       luks,tries=5,keyscript=decrypt_keyfile
+  lvmlmde         UUID=417e53ec-1961-445f-83b7-3ca04ddbf36f none       luks,tries=2,keyscript=decrypt_keyfile
   ```
 
-  The time for entering the password is unlimited, but if you enter the wrong password 5 times, the system will shut down.
+  The time for entering the password is unlimited, but if you enter the wrong password 2 times, the system will shut down.
+
+  ![decrypt_keyfile set tries](img/decrypt_keyfile_tries.png)
+
+  ![decrypt_keyfile tries](img/decrypt_keyfile_tries.apng)
 
 - ### Set path to key on a block device:
 
   ```
   # <target name> <source device>                           <key file>                  <options>
-  crypted         UUID=417e53ec-1961-445f-83b7-3ca04ddbf36f UUID=B304-007D:/key.lek:10s luks,tries=2,keyscript=decrypt_keyfile
+  lvmlmde         UUID=417e53ec-1961-445f-83b7-3ca04ddbf36f UUID=B304-007D:/key.lek:10s luks,tries=2,keyscript=decrypt_keyfile
   ```
 
   If the key is not found within 10 seconds, the password will be requested. If the password is not entered within 10 seconds or is entered incorrectly 2 times in a row, the system will shut down.
+
+  ![decrypt_keyfile set key](img/decrypt_keyfile_key.png)
+
+  ![decrypt_keyfile key](img/decrypt_keyfile_key.apng)
 
 - ### Set path to the key which is a block device:
 
   ```
   # <target name> <source device>                           <key file>                     <options>
-  crypted         UUID=417e53ec-1961-445f-83b7-3ca04ddbf36f /dev/disk/by-uuid/B304-007D:5s luks,keyscript=decrypt_keyfile
+  lvmlmde         UUID=417e53ec-1961-445f-83b7-3ca04ddbf36f /dev/disk/by-uuid/B304-007D:5s luks,keyscript=decrypt_keyfile
   ```
 
   or
 
   ```
   # <target name> <source device>                           <key file>            <options>
-  crypted         UUID=417e53ec-1961-445f-83b7-3ca04ddbf36f UUID=B304-007D:none:5 luks,keyscript=decrypt_keyfile
+  lvmlmde         UUID=417e53ec-1961-445f-83b7-3ca04ddbf36f UUID=B304-007D:none:5 luks,keyscript=decrypt_keyfile
   ```
 
   These two examples are identical, and the key is the entire block device.
@@ -220,21 +232,21 @@ You don't necessarily have to specify all fields; only the necessary ones are su
 
   ```
   # <target name> <source device>                           <key file>      <options>
-  crypted         UUID=417e53ec-1961-445f-83b7-3ca04ddbf36f /run/key.lek:3s luks,keyscript=decrypt_keyfile
+  lvmlmde         UUID=417e53ec-1961-445f-83b7-3ca04ddbf36f /run/key.lek:3s luks,keyscript=decrypt_keyfile
   ```
 
   or
 
   ```
   # <target name> <source device>                           <key file>      <options>
-  crypted         UUID=417e53ec-1961-445f-83b7-3ca04ddbf36f :/run/key.lek:3 luks,keyscript=decrypt_keyfile
+  lvmlmde         UUID=417e53ec-1961-445f-83b7-3ca04ddbf36f :/run/key.lek:3 luks,keyscript=decrypt_keyfile
   ```
 
   or
 
   ```
   # <target name> <source device>                           <key file>        <options>
-  crypted         UUID=417e53ec-1961-445f-83b7-3ca04ddbf36f -:/run/key.lek:3s luks,keyscript=decrypt_keyfile
+  lvmlmde         UUID=417e53ec-1961-445f-83b7-3ca04ddbf36f -:/run/key.lek:3s luks,keyscript=decrypt_keyfile
   ```
 
   These three examples are identical, and the key is a file. As in the previous examples, options `keyfile-size=...`, `keyfile-offset=...`, and `tries=` are also supported here.
