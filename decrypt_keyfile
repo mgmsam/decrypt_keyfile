@@ -89,31 +89,38 @@ resolve_timeout () {
     esac
 }
 
-# resolve_device(DEV)
-#   Resolve device node from a name. This expands any LABEL or UUID.
+# resolve_decryptor(DEV|KEY)
+#   Resolve device node or key file from a name. This expands any LABEL or UUID.
 #   $1=name
 #   Resolved name is echoed.
-resolve_device () {
+resolve_decryptor () {
+    DECRYPTOR="${DEV:-}"
+    DECRYPTOR_IS_FILE=no
     SEC=0
-    SPEC="$DEV"
-    while test "$SEC" -le "${TIMEOUT:-"$SEC"}"
+    while test "$SEC" -le "${DECRYPTOR_TIMEOUT:-"$SEC"}"
     do
-        SEC="$((SEC + 1))"
-        case "$SPEC" in
+        test "${DECRYPTOR_IS_FILE:-}" = no &&
+        case "${DECRYPTOR:-}" in
             UUID=* | LABEL=* | PARTUUID=* | PARTLABEL=*)
-                if DEV="$(blkid --list-one --match-token "$SPEC" --output device)"
+                if DEV="$(blkid --list-one --match-token "$DECRYPTOR" --output device)"
                 then
+                    DECRYPTOR="$DEV"
                     return
                 fi ;;
+            "" | - | none)
+                test "${KEY:-}" || return
+                DECRYPTOR="$KEY" KEY=
+                DECRYPTOR_IS_FILE=yes
+                false ;;
             *)
-                if test -e "$SPEC"
-                then
-                    return
-                fi ;;
-        esac
+                false ;;
+        esac || if test -e "$DECRYPTOR"
+        then
+            return
+        fi
+        SEC="$((SEC + 1))"
         sleep 1
     done 2>/dev/null
-    DEV="$SPEC"
     return 1
 }
 
@@ -162,6 +169,22 @@ EOF
         return
     fi
 
+    case "${TIMEOUT:-}" in
+        infinity)
+            PASSWORD_TIMEOUT=infinity
+            DECRYPTOR_TIMEOUT= ;;
+        "")
+            PASSWORD_TIMEOUT=infinity
+            DECRYPTOR_TIMEOUT=5 ;;
+        *)
+            PASSWORD_TIMEOUT="$TIMEOUT"
+            DECRYPTOR_TIMEOUT="$TIMEOUT" ;;
+    esac
+
+    case "${KEY:-}" in
+        - | none) KEY= ;;
+    esac
+
     resolve_device "$DEV" || return
 
     if test "${KEY:-}"
@@ -183,8 +206,8 @@ EOF
 }
 
 run_askpass () {
-    case "${TIMEOUT:-}" in
-        "")
+    case "${PASSWORD_TIMEOUT:-"${TIMEOUT:-}"}" in
+        infinity)
             /lib/cryptsetup/askpass "Please unlock disk $CRYPTTAB_NAME: "
             ;;
         *)
