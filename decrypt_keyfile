@@ -58,24 +58,6 @@ test "${CRYPTTAB_OPTION_tries:-0}" -le 0 || {
         shutdown_system
 }
 
-is_timeout () {
-    case "${1:-}" in
-        0)
-            TIMEOUT=
-            ;;
-        *[0-9][smhd] )
-            case "${1%?}" in
-                *[!0-9]*)
-                    return 1
-                    ;;
-            esac
-            ;;
-        *[!0-9]*)
-            return 1
-            ;;
-    esac
-}
-
 convert_timeout_to_second () {
     case "$2" in
         s) TIMEOUT="$1" ;;
