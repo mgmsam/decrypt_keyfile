@@ -185,23 +185,23 @@ EOF
         - | none) KEY= ;;
     esac
 
-    resolve_device "$DEV" || return
+    resolve_decryptor || return
 
     if test "${KEY:-}"
     then
-        test -b "$DEV" || {
-            cryptsetup_message "ERROR: $CRYPTTAB_NAME: is not a block device: '$DEV'"
+        test -b "$DECRYPTOR" || {
+            cryptsetup_message "ERROR: $CRYPTTAB_NAME: is not a block device: '$DECRYPTOR'"
             return
         }
         mount_dev && read_key "$DEV_MOUNT/$KEY" && {
             umount "$DEV_MOUNT" 2>/dev/null || :
             exit
         } || umount "$DEV_MOUNT" 2>/dev/null
-    elif test -d "$DEV"
+    elif test -d "$DECRYPTOR"
     then
-        cryptsetup_message "ERROR: $CRYPTTAB_NAME: is directory: '$DEV'"
+        cryptsetup_message "ERROR: $CRYPTTAB_NAME: is directory: '$DECRYPTOR'"
     else
-        read_key "$DEV" && exit
+        read_key "$DECRYPTOR" && exit
     fi
 }
 
