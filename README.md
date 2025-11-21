@@ -80,6 +80,8 @@ Assume the following:
 
 The `cryptsetup` package provides the program `/usr/lib/cryptsetup/scripts/passdev`, which unlocks an encrypted volume using the key specified in the third field of the `/etc/crypttab` file and has a timeout for key waiting, after which a password will be requested.
 
+![crypttab](img/crypttab.png)
+
 However, in my distribution [LMDE 7](https://linuxmint.com/download_lmde.php), based on [Debian 13](https://www.debian.org), I encountered two problems:
 
 1. The timeout doesn't work. If I don't insert the USB stick with the key, the password is not requested;
@@ -131,6 +133,8 @@ As you can see, the `init` script runs the `cryptroot` script 3 times in my dist
 At each of these three steps, `cryptroot` searches for encrypted volumes and attempts to decrypt them. It is `cryptroot` that executes `cryptsetup` to decrypt the volumes using the key, requests the password, and monitors the number of attempts.
 
 Consequently, if I specify the option `tries=3`, I end up with 9 attempts instead of 3. Upon reaching the maximum number of incorrect password attempts, you are dropped into the `initramfs` console for manual mounting of the root partition, which makes no sense to me.
+
+![passdev](img/passdev.apng)
 
 ## Description
 
