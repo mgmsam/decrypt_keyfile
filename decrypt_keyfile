@@ -43,7 +43,7 @@ shutdown_system () {
     poweroff -f
 }
 
-test "$CRYPTTAB_OPTION_tries" -le 0 || {
+test "${CRYPTTAB_OPTION_tries:-0}" -le 0 || {
     CRYPTSETUP_TRIED="$CRYPTSETUP_DIR/cryptsetup-$CRYPTTAB_NAME.tried"
     test -d "$CRYPTSETUP_DIR" || mkdir -p "$CRYPTSETUP_DIR"
     if test -f "$CRYPTSETUP_TRIED"
