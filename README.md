@@ -105,7 +105,7 @@ The reason for the second problem lies in the structure of the `initramfs` scrip
 
    output:
 
-   ```
+   ```bash
    local-block
    ├── cryptroot
    └── mdadm
@@ -143,7 +143,7 @@ When the OS boots from the `initramfs` image unpacked in memory, the `cryptroot`
 If it finds the `keyscript=...` option, it runs the corresponding script. Before running the script, which in our case is `decrypt_keyfile`:
 
 *   The third field of the `/etc/crypttab` file is passed to it as a single argument;
-*   If there are additional options in the fourth field, such as `tries=...`, `keyfile_size=...,`, `keyfile_offset=...,` and many others depending on your `cryptroot` version, the `cryptroot` script exports these options as variables with the `CRYPTTAB_OPTION_...` prefix (e.g., `CRYPTTAB_OPTION_tries`, `CRYPTTAB_OPTION_keyfile_size`, ...), so that these options are available to the executed script;
+*   If there are additional options in the fourth field, such as `tries=...`, `keyfile_size=...`, `keyfile_offset=...` and many others depending on your `cryptroot` version, the `cryptroot` script exports these options as variables with the `CRYPTTAB_OPTION_...` prefix (e.g., `CRYPTTAB_OPTION_tries`, `CRYPTTAB_OPTION_keyfile_size`, ...), so that these options are available to the executed script;
 
 `decrypt_keyfile` supports the following options from the fourth field of `/etc/crypttab`:
   - `tries=` - Specifies the maximum number of times the user is queried for a password. The default is 3. If set to 0, the user is queried for a password indefinitely.
@@ -161,7 +161,7 @@ In the third field of the `/etc/crypttab` file, you can specify three subfields 
       - If the timeout is not specified, the timeout for waiting for the key is 5 seconds. If the key is not found, a password will be requested, and the password waiting time is unlimited.
       - If the timeout is set, it applies to waiting for the key. If the key is not found, the same timeout is applied to waiting for the password. Upon reaching the timeout, the system will shut down.
 
-        > **WARNING**: If you have set the path to a key, you must verify the unlocking of the encrypted volume using the key without a timeout. If an incorrect key is found, you will not receive a password prompt.
+        > _**WARNING**: If you have set the path to a key, you must verify the unlocking of the encrypted volume using the key without a timeout. If an incorrect key is found, you will not receive a password prompt._
 
 ## Examples
 
