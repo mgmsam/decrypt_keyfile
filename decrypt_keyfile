@@ -70,7 +70,7 @@ convert_timeout_to_second () {
 resolve_timeout () {
     case "${1:-}" in
         [0-] | none | infinity)
-            TIMEOUT=
+            TIMEOUT=infinity
             ;;
         *[0-9][smhd])
             case "${1%?}" in
