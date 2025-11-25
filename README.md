@@ -180,11 +180,12 @@ You don't necessarily have to specify all fields; only the necessary ones are su
   lvmlmde         UUID=417e53ec-1961-445f-83b7-3ca04ddbf36f 30         luks,tries=1,keyscript=decrypt_keyfile
   ```
 
+  If the password is not entered within 30 seconds, or if the password is incorrect, the system will shut down.
+
   ![decrypt_keyfile set timeout](img/decrypt_keyfile_timeout.png)
 
   ![decrypt_keyfile timeout](img/decrypt_keyfile_timeout.apng)
 
-  If the password is not entered within 30 seconds, or if the password is incorrect, the system will shut down.
 
   ```
   # <target name> <source device>                           <key file> <options>
